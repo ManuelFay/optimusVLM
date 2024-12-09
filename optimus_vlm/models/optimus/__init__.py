@@ -1,20 +1,19 @@
-from .configuration_optimus import OptimusConfig
-
-from .modeling_optimus import (
-    OptimusForMLM,
-    OptimusForSequenceClassification,
-    OptimusForQuestionAnswering,
-    OptimusForTokenClassification,
-    OptimusModel,
-)
-
 from transformers import (
     AutoConfig,
     AutoModel,
     AutoModelForMaskedLM,
-    AutoModelForSequenceClassification,
     AutoModelForQuestionAnswering,
+    AutoModelForSequenceClassification,
     AutoModelForTokenClassification,
+)
+
+from .configuration_optimus import OptimusConfig
+from .modeling_optimus import (
+    OptimusForMLM,
+    OptimusForQuestionAnswering,
+    OptimusForSequenceClassification,
+    OptimusForTokenClassification,
+    OptimusModel,
 )
 
 AutoConfig.register("optimus", OptimusConfig)

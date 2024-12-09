@@ -29,7 +29,7 @@ from transformers.utils import (
 )
 
 
-from optimus.hf_modeling.configuration_optimus import OptimusConfig
+from ..optimus.configuration_optimus import OptimusConfig
 
 
 logger = logging.get_logger(__name__)
@@ -1382,90 +1382,3 @@ class OptimusForTokenClassification(OptimusPreTrainedModel):
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
-
-
-
-if __name__=="__main__":
-    import torch
-    import argparse
-    from torch.utils.data import DataLoader, TensorDataset
-    from optimus.hf_modeling.conversion import convert_state_dict, remove_prefix_from_state_dict, save_hf_model, architectures
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("path", type=str, help="Path to the model files (will also be used as output)")
-    args = parser.parse_args()
-
-    # Define file paths as parameters for flexibility
-    path = args.path
-    replicated_model_size = "500m"
-    model_path = f"{path}/model.pt"
-    config_path = f"{path}/config.json"
-    output_model_path = f"{path}/pytorch_model.bin"
-
-
-    # Load the model
-    model_dict_weights = torch.load(model_path, map_location=torch.device('cpu'))
-
-    #------------------------------------------------#
-    # Convert Optimus model to Huggingface format
-    #------------------------------------------------#
-    print("Converting Optimus model to Huggingface format for evaluation.")
-    new_model, config = convert_state_dict(f"{model_path}", architectures["500m"])
-    save_hf_model(path, new_model, config)
-    print("Model convertion completed.")
-
-    #------------------------------------------------#
-
-    print("Loading Huggingface model")
-    hf_model = OptimusModel.from_pretrained(path)
-    print("Base model loaded successfully")
-    lm_model = OptimusForMLM.from_pretrained(path)
-    print("MLM model loaded successfully")
-    print(lm_model)
-    lm_model.eval()
-
-    #------------------------------------------------#
-    # Loading original model
-    #------------------------------------------------#
-
-    from optimus.trainer.configuration.configs import Config
-    from optimus.trainer.model.load import load_model
-    from optimus.trainer.model.model import Cache
-
-    config = Config(model_name="optimus", model_size="500m")
-    original_model = load_model(config)
-    state_dict = torch.load(model_path, map_location="cpu")
-    state_dict = remove_prefix_from_state_dict(state_dict)
-    original_model.load_state_dict(state_dict)
-    original_model.eval()
-
-    # Initialize cache for original model
-    cache = Cache()
-    dtype = torch.float32
-    for module in original_model.modules():
-        if hasattr(module, "init_cache"):
-            module.init_cache(cache, dtype=dtype, device=original_model.device)
-
-    #------------------------------------------------#
-    # Inference
-    #------------------------------------------------#
-
-    from transformers import AutoTokenizer
-
-    tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3.1-8B")
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-
-    sample_texts = ["Hello, my dog is cute", "Hello, my cat is cute"]
-    inputs = tokenizer(sample_texts, return_tensors="pt", padding=True, truncation=True)
-    dataset = TensorDataset(inputs['input_ids'], inputs['attention_mask'])
-    dataloader = DataLoader(dataset, batch_size=1)
-
-    with torch.no_grad():
-        for input_ids, attention_mask in dataloader:
-            outputs_hf = lm_model(input_ids=input_ids, attention_mask=attention_mask)
-            outputs_or = original_model(input_ids, cache=cache)
-            print("HF outputs:", outputs_hf)
-            print("Original outputs:", outputs_or)
-            print("Output match:", torch.allclose(outputs_hf.logits.to("cpu"), outputs_or[0].to("cpu"), atol=1e-4))
-            print("--------------------------------------------------")
